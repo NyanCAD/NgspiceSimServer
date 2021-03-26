@@ -8,6 +8,8 @@
 #include <iostream>
 #include <vector>
 #include <complex>
+#include <sstream>
+#include <ngspice/bool.h>
 #include <ngspice/sharedspice.h>
 #include <ngspice/sim.h>
 #include <dlfcn.h>
@@ -67,16 +69,7 @@ class ResultImpl final : public Sim::Result::Server
 public:
     ResultImpl(NgspiceCommandsImpl* cmd) : cmd(cmd) {}
 
-    kj::Promise<void> read(ReadContext context)
-    {
-        return kj::READY_NOW;
-    }
-    kj::Promise<void> readTime(ReadTimeContext context)
-    {
-
-        return kj::READY_NOW;
-    }
-    kj::Promise<void> readAll(ReadAllContext context);
+    kj::Promise<void> read(ReadContext context);
 
     NgspiceCommandsImpl* cmd;
 };
@@ -90,18 +83,48 @@ public:
         sim->m_ngSpice_Command(("source " + name).c_str());
     }
 
-    kj::Promise<void> run(TranContext context)
+    kj::Promise<void> run(RunContext context)
     {
+        std::ostringstream ss;
+        ss << "save";
+        for (auto v : context.getParams().getVectors()) {
+            ss << " " << v.cStr();
+        }
+        const char* savecmd = ss.str().c_str();
+        // std::cout << savecmd << std::endl;
+        // sim->m_ngSpice_Command("save none");
+        sim->m_ngSpice_Command(savecmd);
+
+        fieldnames.lockExclusive()->clear();
+        real_data.lockExclusive()->clear();
+        complex_data.lockExclusive()->clear();
+        sim->m_ngSpice_Command("bg_run");
+        *is_running.lockExclusive() = true;
+        auto res = kj::heap<ResultImpl>(this);
+        context.getResults().setResult(kj::mv(res));
         return kj::READY_NOW;
     }
 
     kj::Promise<void> tran(TranContext context)
     {
         auto params = context.getParams();
+        std::ostringstream ss;
+        ss << "save";
+        for (auto v : params.getVectors()) {
+            ss << " " << v.cStr();
+        }
+        const char* savecmd = ss.str().c_str();
+        // std::cout << savecmd << std::endl;
+        // sim->m_ngSpice_Command("save none");
+        sim->m_ngSpice_Command(savecmd);
+
         char buf[256];
         snprintf(buf, 256, "bg_tran %f %f %f", params.getStep(), params.getStop(), params.getStart());
-        std::cout << "running " << buf << std::endl;
+        fieldnames.lockExclusive()->clear();
+        real_data.lockExclusive()->clear();
+        complex_data.lockExclusive()->clear();
         sim->m_ngSpice_Command(buf);
+        *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
         context.getResults().setResult(kj::mv(res));
         return kj::READY_NOW;
@@ -109,6 +132,62 @@ public:
 
     kj::Promise<void> op(OpContext context)
     {
+        std::ostringstream ss;
+        ss << "save";
+        for (auto v : context.getParams().getVectors()) {
+            ss << " " << v.cStr();
+        }
+        const char* savecmd = ss.str().c_str();
+        // std::cout << savecmd << std::endl;
+        // sim->m_ngSpice_Command("save none");
+        sim->m_ngSpice_Command(savecmd);
+
+        fieldnames.lockExclusive()->clear();
+        real_data.lockExclusive()->clear();
+        complex_data.lockExclusive()->clear();
+        sim->m_ngSpice_Command("bg_op");
+        *is_running.lockExclusive() = true;
+        auto res = kj::heap<ResultImpl>(this);
+        context.getResults().setResult(kj::mv(res));
+        return kj::READY_NOW;
+    }
+
+    kj::Promise<void> ac(AcContext context)
+    {
+        auto params = context.getParams();
+        std::ostringstream ss;
+        ss << "save";
+        for (auto v : params.getVectors()) {
+            ss << " " << v.cStr();
+        }
+        const char* savecmd = ss.str().c_str();
+        // std::cout << savecmd << std::endl;
+        // sim->m_ngSpice_Command("save none");
+        sim->m_ngSpice_Command(savecmd);
+
+        const char* mode;
+        switch (params.getMode())
+        {
+        case Sim::AcType::LIN:
+            mode = "lin";
+            break;
+        case Sim::AcType::OCT:
+            mode = "oct";
+            break;
+        case Sim::AcType::DEC:
+            mode = "dec";
+            break;
+        }
+        char buf[256];
+        snprintf(buf, 256, "bg_ac %s %d %f %f", mode, params.getNum(), params.getFstart(), params.getFstop());
+        std::cout << buf << std::endl;
+        fieldnames.lockExclusive()->clear();
+        real_data.lockExclusive()->clear();
+        complex_data.lockExclusive()->clear();
+        sim->m_ngSpice_Command(buf);
+        *is_running.lockExclusive() = true;
+        auto res = kj::heap<ResultImpl>(this);
+        context.getResults().setResult(kj::mv(res));
         return kj::READY_NOW;
     }
 
@@ -123,8 +202,7 @@ public:
     }
     static int cbBGThreadRunning( bool halted, int id, void* user ) {
         NgspiceCommandsImpl* cmd = reinterpret_cast<NgspiceCommandsImpl*>( user );
-        auto is_running = cmd->is_running.lockExclusive();
-        *is_running = !halted;
+        *cmd->is_running.lockExclusive() = !halted;
         if (halted) {
             std::cout << "BGThreadRunning: not running" << std::endl;
         } else {
@@ -145,7 +223,7 @@ public:
         std::cout << via->name << std::endl;
         for(int i=0; i<via->veccount; i++) {
             fieldnames->push_back(via->vecs[i]->vecname);
-            std::cout << via->vecs[i]->vecname << std::endl;
+            // std::cout << via->vecs[i]->vecname << std::endl;
         }
         real_data->resize(via->veccount);
         complex_data->resize(via->veccount);
@@ -153,13 +231,18 @@ public:
     }
     static int cbSendData(pvecvaluesall vva, int len, int id, void* user) {
         NgspiceCommandsImpl* cmd = reinterpret_cast<NgspiceCommandsImpl*>( user );
+        auto real_data = cmd->real_data.lockExclusive();
+        auto complex_data = cmd->complex_data.lockExclusive();
         for(int i=0; i<vva->veccount; i++) {
-            std::cout << vva->vecsa[i]->name << ": " << vva->vecsa[i]->creal << std::endl;
-            if(vva->vecsa[i]->is_complex) {
-                auto complex_data = cmd->complex_data.lockExclusive();
+            int is_complex = *(int*)((unsigned long)vva->vecsa[i]+sizeof(char*)+sizeof(double)+sizeof(double)+sizeof(int));
+            // std::cout << vva->vecsa[i]->name << "(" << is_complex << "): " << vva->vecsa[i]->creal << " " << vva->vecsa[i]->cimag << std::endl;
+            if(vva->vecsa[i]->is_scale) {
+                *cmd->scale.lockExclusive() = i;
+            }
+            // ngspice has bool all messed up
+            if(is_complex) {
                 (*complex_data)[i].push_back(std::complex(vva->vecsa[i]->creal, vva->vecsa[i]->cimag));
             } else {
-                auto real_data = cmd->real_data.lockExclusive();
                 (*real_data)[i].push_back(vva->vecsa[i]->creal);
             }
         }
@@ -173,46 +256,48 @@ public:
     kj::MutexGuarded<std::vector<std::vector<double>>> real_data;
     kj::MutexGuarded<std::vector<std::vector<std::complex<double>>>> complex_data;
     kj::MutexGuarded<bool> is_running;
+    kj::MutexGuarded<kj::Maybe<unsigned int>> scale;
 };
 
-kj::Promise<void> ResultImpl::readAll(ReadAllContext context)
+kj::Promise<void> ResultImpl::read(ReadContext context)
 {
-    // TODO use timer, but... how to obtain one?
-    return kj::evalLater([this, context]() mutable -> kj::Promise<void> {
-        auto is_running = cmd->is_running.lockExclusive();
-        if(*is_running) return readAll(context);
+    auto fieldnames = cmd->fieldnames.lockExclusive();
+    auto real_data = cmd->real_data.lockExclusive();
+    auto complex_data = cmd->complex_data.lockExclusive();
 
-        auto fieldnames = cmd->fieldnames.lockExclusive();
-        auto real_data = cmd->real_data.lockExclusive();
-        auto complex_data = cmd->complex_data.lockExclusive();
-
-        auto res = context.getResults().initData(fieldnames->size());
-        for (size_t i = 0; i < fieldnames->size(); i++)
+    auto res = context.getResults();
+    KJ_IF_MAYBE(scale, *cmd->scale.lockExclusive()) {
+        res.setScale((*fieldnames)[*scale].c_str());
+    }
+    res.setMore(*cmd->is_running.lockExclusive());
+    auto datlist = res.initData(fieldnames->size());
+    for (size_t i = 0; i < fieldnames->size(); i++)
+    {
+        datlist[i].setName((*fieldnames)[i]);
+        auto dat = datlist[i].getData();
+        if (!(*complex_data)[i].empty())
         {
-            res[i].setName((*fieldnames)[i]);
-            auto dat = res[i].getData();
-            if (!(*complex_data)[i].empty())
+            auto simdat = (*complex_data)[i];
+            auto list = dat.initComplex(simdat.size());
+            for (size_t j = 0; j < simdat.size(); j++)
             {
-                auto simdat = (*complex_data)[i];
-                auto list = dat.initComplex(simdat.size());
-                for (size_t j = 0; j < simdat.size(); j++)
-                {
-                    list[j].setReal(simdat[j].real());
-                    list[j].setImag(simdat[j].imag());
-                }
+                list[j].setReal(simdat[j].real());
+                list[j].setImag(simdat[j].imag());
             }
-            else if (!(*real_data)[i].empty())
-            {
-                auto simdat = (*real_data)[i];
-                auto list = dat.initReal(simdat.size());
-                for (size_t j = 0; j < simdat.size(); j++)
-                {
-                    list.set(j, simdat[j]);
-                }
-            } // else no data apparently
         }
-        return kj::READY_NOW;
-    });
+        else if (!(*real_data)[i].empty())
+        {
+            auto simdat = (*real_data)[i];
+            auto list = dat.initReal(simdat.size());
+            for (size_t j = 0; j < simdat.size(); j++)
+            {
+                list.set(j, simdat[j]);
+            }
+        } // else no data apparently
+        (*real_data)[i].clear();
+        (*complex_data)[i].clear();
+    }
+    return kj::READY_NOW;
 }
 
 class SimulatorImpl final : public Sim::Ngspice::Server
