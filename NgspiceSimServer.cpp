@@ -9,10 +9,17 @@
 #include <vector>
 #include <complex>
 #include <sstream>
-#include <ngspice/bool.h>
 #include <ngspice/sharedspice.h>
-#include <ngspice/sim.h>
 #include <dlfcn.h>
+
+// Ngspice defines bool as int
+typedef struct cppvecvalues {
+    char* name;        /* name of a specific vector */
+    double creal;      /* actual data value */
+    double cimag;      /* actual data value */
+    int is_scale;     /* if 'name' is the scale vector */
+    int is_complex;   /* if the data are complex numbers */
+} cppvecvalues, *cpppvecvalues;
 
 class NgSpice
 {
@@ -234,16 +241,16 @@ public:
         auto real_data = cmd->real_data.lockExclusive();
         auto complex_data = cmd->complex_data.lockExclusive();
         for(int i=0; i<vva->veccount; i++) {
-            int is_complex = *(int*)((unsigned long)vva->vecsa[i]+sizeof(char*)+sizeof(double)+sizeof(double)+sizeof(int));
+            auto vecsa = reinterpret_cast<cpppvecvalues>(vva->vecsa[i]);
             // std::cout << vva->vecsa[i]->name << "(" << is_complex << "): " << vva->vecsa[i]->creal << " " << vva->vecsa[i]->cimag << std::endl;
-            if(vva->vecsa[i]->is_scale) {
+            if(vecsa->is_scale) {
                 *cmd->scale.lockExclusive() = i;
             }
             // ngspice has bool all messed up
-            if(is_complex) {
-                (*complex_data)[i].push_back(std::complex(vva->vecsa[i]->creal, vva->vecsa[i]->cimag));
+            if(vecsa->is_complex) {
+                (*complex_data)[i].push_back(std::complex(vecsa->creal, vecsa->cimag));
             } else {
-                (*real_data)[i].push_back(vva->vecsa[i]->creal);
+                (*real_data)[i].push_back(vecsa->creal);
             }
         }
         return 0;
@@ -333,7 +340,11 @@ int main(int argc, const char *argv[])
     const kj::Directory &dir = fs->getCurrent();
 
     // Set up a server.
-    capnp::EzRpcServer server(kj::heap<SimulatorImpl>(dir), "*:5923");
+    std::string listen = "*:5923";
+    if (argc == 2) {
+        listen = argv[1];
+    }
+    capnp::EzRpcServer server(kj::heap<SimulatorImpl>(dir), listen);
 
     auto &waitScope = server.getWaitScope();
     server.getIoProvider().getTimer();
