@@ -42,7 +42,6 @@ class NgSpice
     }
 
     ~NgSpice() {
-        // m_ngSpice_Command("quit");
         dlclose(m_dll);
     }
 
@@ -88,6 +87,15 @@ public:
     NgspiceCommandsImpl(std::string name) : name(name) {
         sim = kj::heap<NgSpice>(&cbSendChar, &cbSendStat, &cbControlledExit, &cbSendData, &cbSendInitData, &cbBGThreadRunning, this);
         sim->m_ngSpice_Command(("source " + name).c_str());
+    }
+
+    ~NgspiceCommandsImpl() {
+        // need to halt the thread before destroying ourselves
+        // bg thread runs callbacks on us
+        if(sim->m_ngSpice_Running()) {
+            sim->m_ngSpice_Command("bg_halt");
+            sim->m_ngSpice_Command("quit");
+        }
     }
 
     kj::Promise<void> run(RunContext context)
