@@ -27,7 +27,7 @@ class NgSpice
     NgSpice(SendChar* schar, SendStat* sstat, ControlledExit* exit,
             SendData* data, SendInitData* init,
             BGThreadRunning* running, void* ptr) {
-        m_dll = dlopen("libngspice.so", RTLD_LAZY);
+        m_dll = dlopen("libngspice.so.0", RTLD_LAZY);
 
         m_ngSpice_Init = (ngSpice_Init) dlsym(m_dll, "ngSpice_Init" );
         m_ngSpice_Circ = (ngSpice_Circ) dlsym(m_dll, "ngSpice_Circ" );
