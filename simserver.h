@@ -1,4 +1,4 @@
-#include "api/Simulator.capnp.h"
+#include "Simulator.capnp.h"
 #include <kj/debug.h>
 #include <kj/filesystem.h>
 #include <kj/exception.h>
@@ -315,50 +315,5 @@ kj::Promise<void> ResultImpl::read(ReadContext context)
     return kj::READY_NOW;
 }
 
-class SimulatorImpl final : public Sim::Ngspice::Server
-{
-public:
-    SimulatorImpl(const kj::Directory &dir) : dir(dir) {}
-
-    kj::Promise<void> loadFiles(LoadFilesContext context) override
-    {
-        auto files = context.getParams().getFiles();
-        for (Sim::File::Reader f : files)
-        {
-            kj::Path path = kj::Path::parse(f.getName());
-            kj::Own<const kj::File> file = dir.openFile(path, kj::WriteMode::CREATE | kj::WriteMode::MODIFY);
-            file->truncate(0);
-            file->write(0, f.getContents());
-        }
-
-        std::string name = files[0].getName();
-
-        auto res = context.getResults();
-        auto commands = kj::heap<NgspiceCommandsImpl>(name);
-        res.setCommands(kj::mv(commands));
-        return kj::READY_NOW;
-    }
-
-    const kj::Directory &dir;
-};
-
-int main(int argc, const char *argv[])
-{
-    kj::Own<kj::Filesystem> fs = kj::newDiskFilesystem();
-    const kj::Directory &dir = fs->getCurrent();
-
-    // Set up a server.
-    std::string listen = "*:5923";
-    if (argc == 2) {
-        listen = argv[1];
-    }
-    capnp::EzRpcServer server(kj::heap<SimulatorImpl>(dir), listen);
-
-    auto &waitScope = server.getWaitScope();
-    server.getIoProvider().getTimer();
-    uint port = server.getPort().wait(waitScope);
-    std::cout << "Listening on port " << port << "..." << std::endl;
-
-    // Run forever, accepting connections and handling requests.
-    kj::NEVER_DONE.wait(waitScope);
-}
+typedef Sim::NgspiceCommands SimCommands;
+typedef NgspiceCommandsImpl SimCommandsImpl;
