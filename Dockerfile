@@ -14,7 +14,7 @@ WORKDIR /tmp/build
 
 RUN mkdir -p build; \
 cd build; \
-cmake -DCMAKE_INSTALL_PREFIX="/usr/local" ..; \
+cmake -DCMAKE_INSTALL_PREFIX="/usr/local" ../api; \
 make DESTDIR=/tmp -j$(nproc) install
 
 FROM ubuntu:latest
@@ -27,4 +27,4 @@ libngspice0
 COPY --from=build /tmp/usr/local /usr/local
 
 EXPOSE 5923
-CMD ["NgspiceSimServer"]
+CMD ["SimServer"]
