@@ -1,4 +1,4 @@
-#include "Simulator.capnp.h"
+#include "api/Simulator.capnp.h"
 #include <kj/debug.h>
 #include <kj/filesystem.h>
 #include <kj/exception.h>
