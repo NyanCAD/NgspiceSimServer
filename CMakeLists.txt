@@ -6,6 +6,6 @@ find_package(CapnProto CONFIG REQUIRED)
 
 capnp_generate_cpp(SimulatorSources SimulatorHeaders api/Simulator.capnp)
 add_executable(NgspiceSimServer api/main.cpp ${SimulatorSources})
-target_link_libraries(NgspiceSimServer PRIVATE CapnProto::capnp-rpc ${CMAKE_DL_LIBS})
+target_link_libraries(NgspiceSimServer PRIVATE CapnProto::capnp-rpc ngspice)
 target_include_directories(NgspiceSimServer PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 install(TARGETS NgspiceSimServer)

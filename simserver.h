@@ -12,62 +12,6 @@
 #include <ngspice/sharedspice.h>
 #include <dlfcn.h>
 
-// Ngspice defines bool as int
-typedef struct cppvecvalues {
-    char* name;        /* name of a specific vector */
-    double creal;      /* actual data value */
-    double cimag;      /* actual data value */
-    int is_scale;     /* if 'name' is the scale vector */
-    int is_complex;   /* if the data are complex numbers */
-} cppvecvalues, *cpppvecvalues;
-
-class NgSpice
-{
-    public:
-    NgSpice(SendChar* schar, SendStat* sstat, ControlledExit* exit,
-            SendData* data, SendInitData* init,
-            BGThreadRunning* running, void* ptr) {
-        m_dll = dlopen("libngspice.so.0", RTLD_LAZY);
-
-        m_ngSpice_Init = (ngSpice_Init) dlsym(m_dll, "ngSpice_Init" );
-        m_ngSpice_Circ = (ngSpice_Circ) dlsym(m_dll, "ngSpice_Circ" );
-        m_ngSpice_Command = (ngSpice_Command) dlsym(m_dll, "ngSpice_Command" );
-        m_ngGet_Vec_Info = (ngGet_Vec_Info) dlsym(m_dll, "ngGet_Vec_Info" );
-        m_ngSpice_CurPlot  = (ngSpice_CurPlot) dlsym(m_dll, "ngSpice_CurPlot" );
-        m_ngSpice_AllPlots = (ngSpice_AllPlots) dlsym(m_dll, "ngSpice_AllPlots" );
-        m_ngSpice_AllVecs = (ngSpice_AllVecs) dlsym(m_dll, "ngSpice_AllVecs" );
-        m_ngSpice_Running = (ngSpice_Running) dlsym(m_dll, "ngSpice_running" ); // it is not a typo
-
-        m_ngSpice_Init(schar, sstat, exit, data, init, running, ptr);
-    }
-
-    ~NgSpice() {
-        dlclose(m_dll);
-    }
-
-    typedef void ( *ngSpice_Init )( SendChar*, SendStat*, ControlledExit*, SendData*, SendInitData*,
-                                    BGThreadRunning*, void* );
-    typedef int ( *ngSpice_Circ )( const char** circarray );
-    typedef int ( *ngSpice_Command )( const char* command );
-    typedef pvector_info ( *ngGet_Vec_Info )( const char* vecname );
-    typedef char* ( *ngSpice_CurPlot )( void );
-    typedef char** ( *ngSpice_AllPlots )( void );
-    typedef char** ( *ngSpice_AllVecs )( const char* plotname );
-    typedef bool ( *ngSpice_Running )( void );
-
-    ///< Handle to DLL functions
-    ngSpice_Init m_ngSpice_Init;
-    ngSpice_Circ m_ngSpice_Circ;
-    ngSpice_Command m_ngSpice_Command;
-    ngGet_Vec_Info m_ngGet_Vec_Info;
-    ngSpice_CurPlot  m_ngSpice_CurPlot;
-    ngSpice_AllPlots m_ngSpice_AllPlots;
-    ngSpice_AllVecs m_ngSpice_AllVecs;
-    ngSpice_Running m_ngSpice_Running;
-
-    void* m_dll;
-};
-
 class NgspiceCommandsImpl;
 
 class ResultImpl final : public Sim::Result::Server
@@ -85,16 +29,16 @@ class NgspiceCommandsImpl final : public Sim::NgspiceCommands::Server
 {
 public:
     NgspiceCommandsImpl(std::string name) : name(name) {
-        sim = kj::heap<NgSpice>(&cbSendChar, &cbSendStat, &cbControlledExit, &cbSendData, &cbSendInitData, &cbBGThreadRunning, this);
-        sim->m_ngSpice_Command(("source " + name).c_str());
+        ngSpice_Init(&cbSendChar, &cbSendStat, &cbControlledExit, &cbSendData, &cbSendInitData, &cbBGThreadRunning, this);
+        ngSpice_Command((char*)("source " + name).c_str());
     }
 
     ~NgspiceCommandsImpl() {
         // need to halt the thread before destroying ourselves
         // bg thread runs callbacks on us
-        if(sim->m_ngSpice_Running()) {
-            sim->m_ngSpice_Command("bg_halt");
-            sim->m_ngSpice_Command("quit");
+        if(ngSpice_running()) {
+            ngSpice_Command((char*)"bg_halt");
+            ngSpice_Command((char*)"quit");
         }
     }
 
@@ -108,12 +52,12 @@ public:
         const char* savecmd = ss.str().c_str();
         // std::cout << savecmd << std::endl;
         // sim->m_ngSpice_Command("save none");
-        sim->m_ngSpice_Command(savecmd);
+        ngSpice_Command((char*)savecmd);
 
         fieldnames.lockExclusive()->clear();
         real_data.lockExclusive()->clear();
         complex_data.lockExclusive()->clear();
-        sim->m_ngSpice_Command("bg_run");
+        ngSpice_Command((char*)"bg_run");
         *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
         context.getResults().setResult(kj::mv(res));
@@ -131,14 +75,14 @@ public:
         const char* savecmd = ss.str().c_str();
         // std::cout << savecmd << std::endl;
         // sim->m_ngSpice_Command("save none");
-        sim->m_ngSpice_Command(savecmd);
+        ngSpice_Command((char*)savecmd);
 
         char buf[256];
         snprintf(buf, 256, "bg_tran %f %f %f", params.getStep(), params.getStop(), params.getStart());
         fieldnames.lockExclusive()->clear();
         real_data.lockExclusive()->clear();
         complex_data.lockExclusive()->clear();
-        sim->m_ngSpice_Command(buf);
+        ngSpice_Command(buf);
         *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
         context.getResults().setResult(kj::mv(res));
@@ -155,12 +99,12 @@ public:
         const char* savecmd = ss.str().c_str();
         // std::cout << savecmd << std::endl;
         // sim->m_ngSpice_Command("save none");
-        sim->m_ngSpice_Command(savecmd);
+        ngSpice_Command((char*)savecmd);
 
         fieldnames.lockExclusive()->clear();
         real_data.lockExclusive()->clear();
         complex_data.lockExclusive()->clear();
-        sim->m_ngSpice_Command("bg_op");
+        ngSpice_Command((char*)"bg_op");
         *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
         context.getResults().setResult(kj::mv(res));
@@ -178,7 +122,7 @@ public:
         const char* savecmd = ss.str().c_str();
         // std::cout << savecmd << std::endl;
         // sim->m_ngSpice_Command("save none");
-        sim->m_ngSpice_Command(savecmd);
+        ngSpice_Command((char*)savecmd);
 
         const char* mode;
         switch (params.getMode())
@@ -199,7 +143,7 @@ public:
         fieldnames.lockExclusive()->clear();
         real_data.lockExclusive()->clear();
         complex_data.lockExclusive()->clear();
-        sim->m_ngSpice_Command(buf);
+        ngSpice_Command(buf);
         *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
         context.getResults().setResult(kj::mv(res));
@@ -226,8 +170,7 @@ public:
         return 0;
     }
     static int cbControlledExit( int status, bool immediate, bool exit_upon_quit, int id, void* user ) {
-        NgspiceCommandsImpl* cmd = reinterpret_cast<NgspiceCommandsImpl*>( user );
-        cmd->sim = nullptr;
+        exit(1);
         return 0;
     }
     static int cbSendInitData(pvecinfoall via, int id, void* user) {
@@ -249,7 +192,7 @@ public:
         auto real_data = cmd->real_data.lockExclusive();
         auto complex_data = cmd->complex_data.lockExclusive();
         for(int i=0; i<vva->veccount; i++) {
-            auto vecsa = reinterpret_cast<cpppvecvalues>(vva->vecsa[i]);
+            auto vecsa = vva->vecsa[i];
             // std::cout << vva->vecsa[i]->name << "(" << is_complex << "): " << vva->vecsa[i]->creal << " " << vva->vecsa[i]->cimag << std::endl;
             if(vecsa->is_scale) {
                 *cmd->scale.lockExclusive() = i;
@@ -265,7 +208,6 @@ public:
     }
 
     std::string name;
-    kj::Own<NgSpice> sim;
 
     kj::MutexGuarded<std::vector<std::string>> fieldnames;
     kj::MutexGuarded<std::vector<std::vector<double>>> real_data;
