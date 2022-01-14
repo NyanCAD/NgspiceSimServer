@@ -10,7 +10,6 @@
 #include <complex>
 #include <sstream>
 #include <ngspice/sharedspice.h>
-#include <dlfcn.h>
 
 class NgspiceCommandsImpl;
 

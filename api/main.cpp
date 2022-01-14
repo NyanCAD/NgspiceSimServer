@@ -1,8 +1,17 @@
 #include <stdio.h>     // perror, printf
 #include <stdlib.h>    // exit, atoi
-#include <unistd.h>    // read, write, close
-#include <arpa/inet.h> // sockaddr_in, AF_INET, SOCK_STREAM, INADDR_ANY, socket etc...
 #include <string.h>    // memset
+
+#if defined WIN32
+#include <winsock.h>
+typedef int socklen_t;
+#else
+#define closesocket close
+typedef int SOCKET;
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#endif
 
 #include "api/Simulator.capnp.h"
 #include <kj/debug.h>
@@ -13,6 +22,8 @@
 #include <capnp/rpc-twoparty.h>
 
 #include "../simserver.h"
+
+# pragma comment(lib,"ws2_32.lib") //Winsock Library
 
 class SimulatorImpl final : public Sim::Simulator<SimCommands>::Server
 {
@@ -43,8 +54,16 @@ public:
 
 int main(int argc, char const *argv[])
 {
+    #if defined WIN32
+	WSADATA wsaData;
+	int iResult = WSAStartup(MAKEWORD(2 ,2), &wsaData);
+	if (iResult != 0) {
+		printf("error at WSASturtup\n");
+		return 0;
+	}
+    #endif
 
-    int serverFd, clientFd;
+    SOCKET serverFd, clientFd;
     struct sockaddr_in server, client;
     socklen_t len;
     int port = 5923;
@@ -82,7 +101,11 @@ int main(int argc, char const *argv[])
             perror("accept error");
             exit(4);
         }
+        #if defined WIN32
+        int pid = 0; // yolo no forking for you
+        #else
         pid_t pid = fork();
+        #endif
         if (pid < 0) {
             perror("fork error");
             exit(4);
@@ -100,6 +123,9 @@ int main(int argc, char const *argv[])
             return 0;
         }
     }
-    close(serverFd);
+    closesocket(serverFd);
+    #if defined WIN32
+	WSACleanup();
+    #endif
     return 0;
 }
