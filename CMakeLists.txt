@@ -2,7 +2,7 @@ project("NgspiceSimulationServer" CXX)
 cmake_minimum_required(VERSION 3.1)
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to be used")
 
-find_package(Boost REQUIRED)
+find_package(Boost REQUIRED COMPONENTS filesystem)
 find_package(CapnProto CONFIG REQUIRED)
 find_library(LIBNGSPICE ngspice REQUIRED)
 
