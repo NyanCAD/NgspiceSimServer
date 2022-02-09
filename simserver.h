@@ -110,6 +110,31 @@ public:
         return kj::READY_NOW;
     }
 
+    kj::Promise<void> dc(DcContext context)
+    {
+        auto params = context.getParams();
+        std::ostringstream ss;
+        ss << "save";
+        for (auto v : params.getVectors()) {
+            ss << " " << v.cStr();
+        }
+        const char* savecmd = ss.str().c_str();
+        // std::cout << savecmd << std::endl;
+        // sim->m_ngSpice_Command("save none");
+        ngSpice_Command((char*)savecmd);
+
+        char buf[256];
+        snprintf(buf, 256, "bg_dc %s %f %f %f", params.getSrc(), params.getVstart(), params.getVstop(), params.getVincr());
+        fieldnames.lockExclusive()->clear();
+        real_data.lockExclusive()->clear();
+        complex_data.lockExclusive()->clear();
+        ngSpice_Command((char*)"bg_dc");
+        *is_running.lockExclusive() = true;
+        auto res = kj::heap<ResultImpl>(this);
+        context.getResults().setResult(kj::mv(res));
+        return kj::READY_NOW;
+    }
+
     kj::Promise<void> ac(AcContext context)
     {
         auto params = context.getParams();
@@ -148,6 +173,46 @@ public:
         context.getResults().setResult(kj::mv(res));
         return kj::READY_NOW;
     }
+
+    kj::Promise<void> noise(NoiseContext context)
+    {
+        auto params = context.getParams();
+        std::ostringstream ss;
+        ss << "save";
+        for (auto v : params.getVectors()) {
+            ss << " " << v.cStr();
+        }
+        const char* savecmd = ss.str().c_str();
+        // std::cout << savecmd << std::endl;
+        // sim->m_ngSpice_Command("save none");
+        ngSpice_Command((char*)savecmd);
+
+        const char* mode;
+        switch (params.getMode())
+        {
+        case Sim::AcType::LIN:
+            mode = "lin";
+            break;
+        case Sim::AcType::OCT:
+            mode = "oct";
+            break;
+        case Sim::AcType::DEC:
+            mode = "dec";
+            break;
+        }
+        char buf[256];
+        snprintf(buf, 256, "bg_ac %s %s %s %d %f %f", params.getOutput(), params.getSrc(), mode, params.getNum(), params.getFstart(), params.getFstop());
+        std::cout << buf << std::endl;
+        fieldnames.lockExclusive()->clear();
+        real_data.lockExclusive()->clear();
+        complex_data.lockExclusive()->clear();
+        ngSpice_Command(buf);
+        *is_running.lockExclusive() = true;
+        auto res = kj::heap<ResultImpl>(this);
+        context.getResults().setResult(kj::mv(res));
+        return kj::READY_NOW;
+    }
+
 
     // Callback functions
     static int cbSendChar( char* what, int id, void* user ) {
