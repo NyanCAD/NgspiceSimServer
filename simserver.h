@@ -251,10 +251,10 @@ public:
     static int cbSendData(pvecvaluesall vva, int len, int id, void* user) {
         std::cout << "send data\n";
         NgspiceCommandsImpl* cmd = reinterpret_cast<NgspiceCommandsImpl*>( user );
-        NgVectors vec = cmd->vectors.lockExclusive()->back();
+        NgVectors &vec = cmd->vectors.lockExclusive()->back();
         for(int i=0; i<vva->veccount; i++) {
             auto vecsa = vva->vecsa[i];
-            std::cout << vva->vecsa[i]->name << "(" << vecsa->is_complex << "): " << vva->vecsa[i]->creal << " " << vva->vecsa[i]->cimag << std::endl;
+            // std::cout << vva->vecsa[i]->name << "(" << vecsa->is_complex << "): " << vva->vecsa[i]->creal << " " << vva->vecsa[i]->cimag << std::endl;
             if(vecsa->is_scale) {
                 vec.scale = i;
             }
