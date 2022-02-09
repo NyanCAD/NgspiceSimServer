@@ -23,6 +23,13 @@ public:
     NgspiceCommandsImpl* cmd;
 };
 
+struct NgVectors {
+    std::string name;
+    std::vector<std::string> fieldnames;
+    std::vector<std::vector<double>> real_data;
+    std::vector<std::vector<std::complex<double>>> complex_data;
+    kj::Maybe<unsigned int> scale;
+};
 
 class NgspiceCommandsImpl final : public Sim::NgspiceCommands::Server
 {
@@ -53,9 +60,7 @@ public:
         // sim->m_ngSpice_Command("save none");
         ngSpice_Command((char*)savecmd);
 
-        fieldnames.lockExclusive()->clear();
-        real_data.lockExclusive()->clear();
-        complex_data.lockExclusive()->clear();
+        vectors.lockExclusive()->clear();
         ngSpice_Command((char*)"bg_run");
         *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
@@ -78,9 +83,7 @@ public:
 
         char buf[256];
         snprintf(buf, 256, "bg_tran %f %f %f", params.getStep(), params.getStop(), params.getStart());
-        fieldnames.lockExclusive()->clear();
-        real_data.lockExclusive()->clear();
-        complex_data.lockExclusive()->clear();
+        vectors.lockExclusive()->clear();
         ngSpice_Command(buf);
         *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
@@ -100,9 +103,7 @@ public:
         // sim->m_ngSpice_Command("save none");
         ngSpice_Command((char*)savecmd);
 
-        fieldnames.lockExclusive()->clear();
-        real_data.lockExclusive()->clear();
-        complex_data.lockExclusive()->clear();
+        vectors.lockExclusive()->clear();
         ngSpice_Command((char*)"bg_op");
         *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
@@ -124,11 +125,10 @@ public:
         ngSpice_Command((char*)savecmd);
 
         char buf[256];
-        snprintf(buf, 256, "bg_dc %s %f %f %f", params.getSrc(), params.getVstart(), params.getVstop(), params.getVincr());
-        fieldnames.lockExclusive()->clear();
-        real_data.lockExclusive()->clear();
-        complex_data.lockExclusive()->clear();
-        ngSpice_Command((char*)"bg_dc");
+        snprintf(buf, 256, "bg_dc %s %f %f %f", params.getSrc().cStr(), params.getVstart(), params.getVstop(), params.getVincr());
+        std::cout << buf << std::endl;
+        vectors.lockExclusive()->clear();
+        ngSpice_Command(buf);
         *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
         context.getResults().setResult(kj::mv(res));
@@ -164,9 +164,7 @@ public:
         char buf[256];
         snprintf(buf, 256, "bg_ac %s %d %f %f", mode, params.getNum(), params.getFstart(), params.getFstop());
         std::cout << buf << std::endl;
-        fieldnames.lockExclusive()->clear();
-        real_data.lockExclusive()->clear();
-        complex_data.lockExclusive()->clear();
+        vectors.lockExclusive()->clear();
         ngSpice_Command(buf);
         *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
@@ -200,12 +198,10 @@ public:
             mode = "dec";
             break;
         }
-        char buf[256];
-        snprintf(buf, 256, "bg_ac %s %s %s %d %f %f", params.getOutput(), params.getSrc(), mode, params.getNum(), params.getFstart(), params.getFstop());
+        char buf[512];
+        snprintf(buf, 512, "bg_noise %s %s %s %d %f %f", params.getOutput().cStr(), params.getSrc().cStr(), mode, params.getNum(), params.getFstart(), params.getFstop());
         std::cout << buf << std::endl;
-        fieldnames.lockExclusive()->clear();
-        real_data.lockExclusive()->clear();
-        complex_data.lockExclusive()->clear();
+        vectors.lockExclusive()->clear();
         ngSpice_Command(buf);
         *is_running.lockExclusive() = true;
         auto res = kj::heap<ResultImpl>(this);
@@ -238,34 +234,35 @@ public:
         return 0;
     }
     static int cbSendInitData(pvecinfoall via, int id, void* user) {
+        std::cout << "init data\n";
         NgspiceCommandsImpl* cmd = reinterpret_cast<NgspiceCommandsImpl*>( user );
-        auto fieldnames = cmd->fieldnames.lockExclusive();
-        auto real_data = cmd->real_data.lockExclusive();
-        auto complex_data = cmd->complex_data.lockExclusive();
+        NgVectors vec;
+        vec.name = via->name;
         std::cout << via->name << std::endl;
         for(int i=0; i<via->veccount; i++) {
-            fieldnames->push_back(via->vecs[i]->vecname);
-            // std::cout << via->vecs[i]->vecname << std::endl;
+            vec.fieldnames.push_back(via->vecs[i]->vecname);
+            std::cout << via->vecs[i]->vecname << std::endl;
         }
-        real_data->resize(via->veccount);
-        complex_data->resize(via->veccount);
+        vec.real_data.resize(via->veccount);
+        vec.complex_data.resize(via->veccount);
+        cmd->vectors.lockExclusive()->push_back(vec);
         return 0;
     }
     static int cbSendData(pvecvaluesall vva, int len, int id, void* user) {
+        std::cout << "send data\n";
         NgspiceCommandsImpl* cmd = reinterpret_cast<NgspiceCommandsImpl*>( user );
-        auto real_data = cmd->real_data.lockExclusive();
-        auto complex_data = cmd->complex_data.lockExclusive();
+        NgVectors vec = cmd->vectors.lockExclusive()->back();
         for(int i=0; i<vva->veccount; i++) {
             auto vecsa = vva->vecsa[i];
-            // std::cout << vva->vecsa[i]->name << "(" << is_complex << "): " << vva->vecsa[i]->creal << " " << vva->vecsa[i]->cimag << std::endl;
+            std::cout << vva->vecsa[i]->name << "(" << vecsa->is_complex << "): " << vva->vecsa[i]->creal << " " << vva->vecsa[i]->cimag << std::endl;
             if(vecsa->is_scale) {
-                *cmd->scale.lockExclusive() = i;
+                vec.scale = i;
             }
             // ngspice has bool all messed up
             if(vecsa->is_complex) {
-                (*complex_data)[i].push_back(std::complex(vecsa->creal, vecsa->cimag));
+                vec.complex_data[i].push_back(std::complex(vecsa->creal, vecsa->cimag));
             } else {
-                (*real_data)[i].push_back(vecsa->creal);
+                vec.real_data[i].push_back(vecsa->creal);
             }
         }
         return 0;
@@ -273,50 +270,50 @@ public:
 
     std::string name;
 
-    kj::MutexGuarded<std::vector<std::string>> fieldnames;
-    kj::MutexGuarded<std::vector<std::vector<double>>> real_data;
-    kj::MutexGuarded<std::vector<std::vector<std::complex<double>>>> complex_data;
+    kj::MutexGuarded<std::vector<NgVectors>> vectors;
     kj::MutexGuarded<bool> is_running;
-    kj::MutexGuarded<kj::Maybe<unsigned int>> scale;
 };
 
 kj::Promise<void> ResultImpl::read(ReadContext context)
 {
-    auto fieldnames = cmd->fieldnames.lockExclusive();
-    auto real_data = cmd->real_data.lockExclusive();
-    auto complex_data = cmd->complex_data.lockExclusive();
-
     auto res = context.getResults();
-    KJ_IF_MAYBE(scale, *cmd->scale.lockExclusive()) {
-        res.setScale((*fieldnames)[*scale].c_str());
-    }
     res.setMore(*cmd->is_running.lockExclusive());
-    auto datlist = res.initData(fieldnames->size());
-    for (size_t i = 0; i < fieldnames->size(); i++)
-    {
-        datlist[i].setName((*fieldnames)[i]);
-        auto dat = datlist[i].getData();
-        if (!(*complex_data)[i].empty())
-        {
-            auto simdat = (*complex_data)[i];
-            auto list = dat.initComplex(simdat.size());
-            for (size_t j = 0; j < simdat.size(); j++)
-            {
-                list[j].setReal(simdat[j].real());
-                list[j].setImag(simdat[j].imag());
-            }
+    auto vecs = cmd->vectors.lockExclusive();
+    auto dat = res.initData(vecs->size());
+    for(size_t h = 0; h< vecs->size(); h++) {
+        NgVectors &vec = (*vecs)[h];
+        auto res = dat[h];
+        KJ_IF_MAYBE(scale, vec.scale) {
+            res.setScale(vec.fieldnames[*scale]);
         }
-        else if (!(*real_data)[i].empty())
+        res.setName(vec.name);
+        auto datlist = res.initData(vec.fieldnames.size());
+        for (size_t i = 0; i < vec.fieldnames.size(); i++)
         {
-            auto simdat = (*real_data)[i];
-            auto list = dat.initReal(simdat.size());
-            for (size_t j = 0; j < simdat.size(); j++)
+            datlist[i].setName(vec.fieldnames[i]);
+            auto dat = datlist[i].getData();
+            if (!vec.complex_data[i].empty())
             {
-                list.set(j, simdat[j]);
+                auto simdat = vec.complex_data[i];
+                auto list = dat.initComplex(simdat.size());
+                for (size_t j = 0; j < simdat.size(); j++)
+                {
+                    list[j].setReal(simdat[j].real());
+                    list[j].setImag(simdat[j].imag());
+                }
             }
-        } // else no data apparently
-        (*real_data)[i].clear();
-        (*complex_data)[i].clear();
+            else if (!vec.real_data[i].empty())
+            {
+                auto simdat = vec.real_data[i];
+                auto list = dat.initReal(simdat.size());
+                for (size_t j = 0; j < simdat.size(); j++)
+                {
+                    list.set(j, simdat[j]);
+                }
+            } // else no data apparently
+            vec.real_data[i].clear();
+            vec.complex_data[i].clear();
+        }
     }
     return kj::READY_NOW;
 }
