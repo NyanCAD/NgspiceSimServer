@@ -249,7 +249,7 @@ public:
         return 0;
     }
     static int cbSendData(pvecvaluesall vva, int len, int id, void* user) {
-        std::cout << "send data\n";
+        // std::cout << "send data\n";
         NgspiceCommandsImpl* cmd = reinterpret_cast<NgspiceCommandsImpl*>( user );
         NgVectors &vec = cmd->vectors.lockExclusive()->back();
         for(int i=0; i<vva->veccount; i++) {
