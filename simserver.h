@@ -213,13 +213,17 @@ public:
     // Callback functions
     static int cbSendChar( char* what, int id, void* user ) {
         NgspiceCommandsImpl* cmd = reinterpret_cast<NgspiceCommandsImpl*>( user );
-        cmd->stdout.lockExclusive()->append(what);
+        auto buf = cmd->outputbuf.lockExclusive();
+        buf->append(what);
+        buf->push_back('\n');
         std::cout << "SendChar: " << what << std::endl;
         return 0;
     }
     static int cbSendStat( char* what, int id, void* user ) {
         NgspiceCommandsImpl* cmd = reinterpret_cast<NgspiceCommandsImpl*>( user );
-        cmd->stdout.lockExclusive()->append(what);
+        auto buf = cmd->outputbuf.lockExclusive();
+        buf->append(what);
+        buf->push_back('\n');
         std::cout << "SendStat: " << what << std::endl;
         return 0;
     }
@@ -275,7 +279,7 @@ public:
     std::string name;
 
     kj::MutexGuarded<std::vector<NgVectors>> vectors;
-    kj::MutexGuarded<std::string> stdout;
+    kj::MutexGuarded<std::string> outputbuf;
     kj::MutexGuarded<bool> is_running;
 };
 
@@ -284,9 +288,9 @@ kj::Promise<void> ResultImpl::read(ReadContext context)
     auto res = context.getResults();
     res.setMore(*cmd->is_running.lockExclusive());
     {
-        auto stdout = cmd->stdout.lockExclusive();
-        res.setStdout(*stdout);
-        stdout->clear();
+        auto outputbuf = cmd->outputbuf.lockExclusive();
+        res.setStdout(*outputbuf);
+        outputbuf->clear();
     }
     auto vecs = cmd->vectors.lockExclusive();
     auto dat = res.initData(vecs->size());
