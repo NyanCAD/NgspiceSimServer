@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2022 Pepijn de Vos
+#
+# SPDX-License-Identifier: MPL-2.0
+
 project("NgspiceSimulationServer" CXX)
 cmake_minimum_required(VERSION 3.1)
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to be used")
