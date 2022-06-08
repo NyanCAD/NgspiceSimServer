@@ -293,7 +293,8 @@ kj::Promise<void> ResultImpl::read(ReadContext context)
     res.setMore(*cmd->is_running.lockExclusive());
     {
         auto outputbuf = cmd->outputbuf.lockExclusive();
-        res.setStdout(*outputbuf);
+        capnp::Data::Reader dat((const kj::byte*)outputbuf->data(), outputbuf->length());
+        res.setStdout(dat);
         outputbuf->clear();
     }
     auto vecs = cmd->vectors.lockExclusive();
