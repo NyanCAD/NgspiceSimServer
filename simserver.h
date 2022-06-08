@@ -59,10 +59,8 @@ public:
         for (auto v : context.getParams().getVectors()) {
             ss << " " << v.cStr();
         }
-        const char* savecmd = ss.str().c_str();
-        // std::cout << savecmd << std::endl;
-        // sim->m_ngSpice_Command("save none");
-        ngSpice_Command((char*)savecmd);
+        auto savecmd = ss.str();
+        ngSpice_Command((char*)savecmd.c_str());
 
         vectors.lockExclusive()->clear();
         ngSpice_Command((char*)"bg_run");
@@ -79,11 +77,10 @@ public:
         ss << "save";
         for (auto v : params.getVectors()) {
             ss << " " << v.cStr();
+            std::cout << v.cStr() << std::endl;
         }
-        const char* savecmd = ss.str().c_str();
-        // std::cout << savecmd << std::endl;
-        // sim->m_ngSpice_Command("save none");
-        ngSpice_Command((char*)savecmd);
+        auto savecmd = ss.str();
+        ngSpice_Command((char*)savecmd.c_str());
 
         char buf[256];
         snprintf(buf, 256, "bg_tran %f %f %f", params.getStep(), params.getStop(), params.getStart());
@@ -102,10 +99,8 @@ public:
         for (auto v : context.getParams().getVectors()) {
             ss << " " << v.cStr();
         }
-        const char* savecmd = ss.str().c_str();
-        // std::cout << savecmd << std::endl;
-        // sim->m_ngSpice_Command("save none");
-        ngSpice_Command((char*)savecmd);
+        auto savecmd = ss.str();
+        ngSpice_Command((char*)savecmd.c_str());
 
         vectors.lockExclusive()->clear();
         ngSpice_Command((char*)"bg_op");
@@ -123,10 +118,8 @@ public:
         for (auto v : params.getVectors()) {
             ss << " " << v.cStr();
         }
-        const char* savecmd = ss.str().c_str();
-        // std::cout << savecmd << std::endl;
-        // sim->m_ngSpice_Command("save none");
-        ngSpice_Command((char*)savecmd);
+        auto savecmd = ss.str();
+        ngSpice_Command((char*)savecmd.c_str());
 
         char buf[256];
         snprintf(buf, 256, "bg_dc %s %f %f %f", params.getSrc().cStr(), params.getVstart(), params.getVstop(), params.getVincr());
@@ -147,10 +140,8 @@ public:
         for (auto v : params.getVectors()) {
             ss << " " << v.cStr();
         }
-        const char* savecmd = ss.str().c_str();
-        // std::cout << savecmd << std::endl;
-        // sim->m_ngSpice_Command("save none");
-        ngSpice_Command((char*)savecmd);
+        auto savecmd = ss.str();
+        ngSpice_Command((char*)savecmd.c_str());
 
         const char* mode;
         switch (params.getMode())
@@ -184,10 +175,8 @@ public:
         for (auto v : params.getVectors()) {
             ss << " " << v.cStr();
         }
-        const char* savecmd = ss.str().c_str();
-        // std::cout << savecmd << std::endl;
-        // sim->m_ngSpice_Command("save none");
-        ngSpice_Command((char*)savecmd);
+        auto savecmd = ss.str();
+        ngSpice_Command((char*)savecmd.c_str());
 
         const char* mode;
         switch (params.getMode())
