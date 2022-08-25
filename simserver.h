@@ -35,6 +35,29 @@ struct NgVectors {
     kj::Maybe<unsigned int> scale;
 };
 
+void save_vectors(capnp::List<capnp::Text, capnp::Kind::BLOB>::Reader vecs) {
+    /*
+    NgSpice is basically messed up somehow
+    save is supposed to set the variables unless you do save all
+    then it's supposed to do all plus whatever else you want
+    but it seems like after running a simulation it always adds stuff
+    So we first do a reset, and then do a save, which should set rather than add.
+    This is kinda inconvenient because it also appears that if you save +30 vectors
+    in a single command it kinda just breaks??
+    So I'd like to send individual save commands but that only saves a single vector...
+    Sometimes.
+    */
+    ngSpice_Command((char*)"reset");
+    std::ostringstream ss;
+    ss << "save";
+    for (auto v : vecs) {
+        ss << " " << v.cStr();
+    }
+    auto savecmd = ss.str();
+    std::cout << savecmd << std::endl;
+    ngSpice_Command((char*)savecmd.c_str());
+}
+
 class NgspiceCommandsImpl final : public Sim::NgspiceCommands::Server
 {
 public:
@@ -54,13 +77,7 @@ public:
 
     kj::Promise<void> run(RunContext context)
     {
-        std::ostringstream ss;
-        ss << "save";
-        for (auto v : context.getParams().getVectors()) {
-            ss << " " << v.cStr();
-        }
-        auto savecmd = ss.str();
-        ngSpice_Command((char*)savecmd.c_str());
+        save_vectors(context.getParams().getVectors());
 
         vectors.lockExclusive()->clear();
         ngSpice_Command((char*)"bg_run");
@@ -73,14 +90,7 @@ public:
     kj::Promise<void> tran(TranContext context)
     {
         auto params = context.getParams();
-        std::ostringstream ss;
-        ss << "save";
-        for (auto v : params.getVectors()) {
-            ss << " " << v.cStr();
-            std::cout << v.cStr() << std::endl;
-        }
-        auto savecmd = ss.str();
-        ngSpice_Command((char*)savecmd.c_str());
+        save_vectors(params.getVectors());
 
         char buf[256];
         snprintf(buf, 256, "bg_tran %f %f %f", params.getStep(), params.getStop(), params.getStart());
@@ -94,13 +104,7 @@ public:
 
     kj::Promise<void> op(OpContext context)
     {
-        std::ostringstream ss;
-        ss << "save";
-        for (auto v : context.getParams().getVectors()) {
-            ss << " " << v.cStr();
-        }
-        auto savecmd = ss.str();
-        ngSpice_Command((char*)savecmd.c_str());
+        save_vectors(context.getParams().getVectors());
 
         vectors.lockExclusive()->clear();
         ngSpice_Command((char*)"bg_op");
@@ -113,13 +117,7 @@ public:
     kj::Promise<void> dc(DcContext context)
     {
         auto params = context.getParams();
-        std::ostringstream ss;
-        ss << "save";
-        for (auto v : params.getVectors()) {
-            ss << " " << v.cStr();
-        }
-        auto savecmd = ss.str();
-        ngSpice_Command((char*)savecmd.c_str());
+        save_vectors(params.getVectors());
 
         char buf[256];
         snprintf(buf, 256, "bg_dc %s %f %f %f", params.getSrc().cStr(), params.getVstart(), params.getVstop(), params.getVincr());
@@ -135,13 +133,7 @@ public:
     kj::Promise<void> ac(AcContext context)
     {
         auto params = context.getParams();
-        std::ostringstream ss;
-        ss << "save";
-        for (auto v : params.getVectors()) {
-            ss << " " << v.cStr();
-        }
-        auto savecmd = ss.str();
-        ngSpice_Command((char*)savecmd.c_str());
+        save_vectors(params.getVectors());
 
         const char* mode;
         switch (params.getMode())
@@ -170,13 +162,7 @@ public:
     kj::Promise<void> noise(NoiseContext context)
     {
         auto params = context.getParams();
-        std::ostringstream ss;
-        ss << "save";
-        for (auto v : params.getVectors()) {
-            ss << " " << v.cStr();
-        }
-        auto savecmd = ss.str();
-        ngSpice_Command((char*)savecmd.c_str());
+        save_vectors(params.getVectors());
 
         const char* mode;
         switch (params.getMode())
