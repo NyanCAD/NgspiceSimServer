@@ -11,6 +11,7 @@
 #include <capnp/message.h>
 #include <iostream>
 #include <vector>
+#include <map>
 #include <complex>
 #include <sstream>
 #include <ngspice/sharedspice.h>
@@ -57,6 +58,13 @@ void save_vectors(capnp::List<capnp::Text, capnp::Kind::BLOB>::Reader vecs) {
     std::cout << savecmd << std::endl;
     ngSpice_Command((char*)savecmd.c_str());
 }
+
+std::map<std::string, std::string> sim_names = {
+    {"Transient Simulation", "tran"},
+    {"Operating Point", "op"},
+    {"AC Analysis", "ac"},
+    // [...]
+};
 
 class NgspiceCommandsImpl final : public Sim::NgspiceCommands::Server
 {
@@ -224,7 +232,11 @@ public:
         std::cout << "init data\n";
         NgspiceCommandsImpl* cmd = reinterpret_cast<NgspiceCommandsImpl*>( user );
         NgVectors vec;
-        vec.name = via->name;
+        if(sim_names.count(via->name)) {
+            vec.name = sim_names[via->name];
+        } else {
+            vec.name = via->name;
+        }
         std::cout << via->name << std::endl;
         for(int i=0; i<via->veccount; i++) {
             vec.fieldnames.push_back(via->vecs[i]->vecname);
@@ -241,11 +253,9 @@ public:
         NgVectors &vec = cmd->vectors.lockExclusive()->back();
         for(int i=0; i<vva->veccount; i++) {
             auto vecsa = vva->vecsa[i];
-            // std::cout << vva->vecsa[i]->name << "(" << vecsa->is_complex << "): " << vva->vecsa[i]->creal << " " << vva->vecsa[i]->cimag << std::endl;
             if(vecsa->is_scale) {
                 vec.scale = i;
             }
-            // ngspice has bool all messed up
             if(vecsa->is_complex) {
                 vec.complex_data[i].push_back(std::complex(vecsa->creal, vecsa->cimag));
             } else {
